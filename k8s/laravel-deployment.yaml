@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel-app
+  template:
+    metadata:
+      labels:
+        app: laravel-app
+    spec:
+      initContainers:
+        - name: clone-laravel
+          image: alpine/git:latest
+          command:
+            - sh
+            - -c
+            - git clone https://github.com/SreangRachana/FinalDevOps.git /var/www/laravel
+          volumeMounts:
+            - name: laravel-code
+              mountPath: /var/www/laravel
+
+      containers:
+        - name: web-server
+          image: node:18-alpine
+          workingDir: /var/www/laravel
+          ports:
+            - containerPort: 8080
+            - containerPort: 22
+          volumeMounts:
+            - name: laravel-code
+              mountPath: /var/www/laravel
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "300m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+
+              apk add --no-cache \
+                php83 \
+                php83-fpm \
+                php83-pdo \
+                php83-pdo_mysql \
+                php83-mbstring \
+                php83-tokenizer \
+                php83-xml \
+                php83-curl \
+                php83-json \
+                php83-openssl \
+                php83-fileinfo \
+                php83-ctype \
+                php83-session \
+                php83-zlib \
+                php83-bcmath \
+                php83-phar \
+                php83-dom \
+                php83-iconv \
+                php83-simplexml \
+                php83-xmlwriter \
+                nginx \
+                openssh \
+                curl \
+                git \
+                unzip \
+                nodejs \
+                npm
+
+              ln -sf /usr/bin/php83 /usr/bin/php
+
+              curl -sS https://getcomposer.org/installer | php
+              mv composer.phar /usr/local/bin/composer
+
+              composer install --no-interaction --prefer-dist --optimize-autoloader
+
+              rm -rf node_modules
+              npm cache clean --force
+              npm install -g vite
+              npm install
+              npm run build
+
+              cp .env.example .env
+
+              sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+              sed -i 's/DB_DATABASE=.*/DB_DATABASE=sreangrachana-db/' .env
+              sed -i 's/DB_USERNAME=.*/DB_USERNAME=root/' .env
+              sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=Hello@123/' .env
+
+              php artisan key:generate
+
+              # Wait for MySQL service
+              for i in $(seq 1 30); do
+                nc -z 127.0.0.1 3306 && break
+                echo "Waiting for MySQL..."
+                sleep 1
+              done
+
+              php artisan migrate --force
+
+              mkdir -p /run/nginx
+
+              cat > /etc/nginx/nginx.conf << 'EOF'
+              server {
+                listen 8080;
+                root /var/www/laravel/public;
+                index index.php index.html;
+                location / {
+                  try_files $uri $uri/ /index.php?$query_string;
+                }
+                location ~ \.php$ {
+                  fastcgi_pass 127.0.0.1:9000;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                }
+              }
+              EOF
+
+              ssh-keygen -A
+              rc-update add sshd
+
+              php-fpm8 &
+              /usr/sbin/sshd
+
+              nginx -g 'daemon off;'
+
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "Hello@123"
+            - name: MYSQL_DATABASE
+              value: "sreangrachana-db"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "300m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+      volumes:
+        - name: laravel-code
+          emptyDir: {}
