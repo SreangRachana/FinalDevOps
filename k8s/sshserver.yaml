@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ssh
+  template:
+    metadata:
+      labels:
+        app: ssh
+    spec:
+      containers:
+        - name: ssh
+          image: linuxserver/openssh-server
+          env:
+            - name: PASSWORD_ACCESS
+              value: "true"
+            - name: USER_NAME
+              value: "test"
+            - name: USER_PASSWORD
+              value: "testpass"
+          ports:
+            - containerPort: 2222
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-service
+spec:
+  selector:
+    app: ssh
+  type: NodePort
+  ports:
+    - port: 22
+      targetPort: 2222
+      nodePort: 30022
