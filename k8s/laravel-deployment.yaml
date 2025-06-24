@@ -82,10 +82,7 @@ spec:
 
               composer install --no-interaction --prefer-dist --optimize-autoloader
 
-              rm -rf node_modules
-              npm cache clean --force
-              npm install -g vite
-              npm install
+              npm install --include=dev
               npm run build
 
               cp .env.example .env
